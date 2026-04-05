@@ -1,1 +1,1232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Railway バックエンドのURLをここに設定 (Vercel デプロイ時は自動で書き換わる) -->
+<meta name="api-url" content="__API_URL__">
+<title>🏁 Race Telemetry Analyzer</title>
+<style>
+/* ── リセット・変数 ────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg0:#070A12;--bg1:#0A0E1A;--bg2:#0F1421;--bg3:#141929;
+  --border:#1E2840;--border2:#2A3855;
+  --cyan:#00E5FF;--cyan2:#00B8CC;--cyanglow:rgba(0,229,255,0.12);
+  --green:#39FF8A;--amber:#FFB84E;--red:#FF4E4E;--orange:#FF884E;
+  --muted:#5A6A8A;--muted2:#8B9EC0;--text:#E8EEF8;
+  --mono:'JetBrains Mono',monospace;--ui:'Rajdhani',sans-serif;
+  --r4:4px;--r8:8px;--r12:12px;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg0);color:var(--text);font-family:var(--ui);font-size:15px;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg1)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+button{font-family:var(--ui);cursor:pointer;border:none;outline:none}
+input,select{font-family:var(--mono);font-size:13px}
+img{max-width:100%;display:block}
 
+/* ── レイアウト ─────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* ── ナビバー ────────────────────────────────────────────── */
+#navbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;height:50px;flex-shrink:0;
+  background:rgba(7,10,18,0.92);border-bottom:1px solid var(--border);
+  backdrop-filter:blur(10px);
+}
+.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-logo{font-size:20px}
+.nav-title{font-family:var(--ui);font-size:15px;font-weight:700;letter-spacing:.18em;color:var(--cyan)}
+.nav-right{display:flex;align-items:center;gap:10px}
+.nav-badge{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r4);padding:3px 8px}
+#btn-reset{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r4);padding:5px 12px;transition:color .14s;display:none}
+#btn-reset:hover{color:var(--text)}
+
+/* ── ステップバー ─────────────────────────────────────────── */
+#stepbar{
+  display:flex;align-items:center;justify-content:center;
+  padding:16px 0 8px;gap:0;flex-shrink:0;
+}
+.step-wrap{display:flex;align-items:center}
+.step-circle{
+  width:28px;height:28px;border-radius:50%;
+  border:1.5px solid var(--border2);background:var(--bg2);
+  color:var(--muted);font-family:var(--mono);font-size:12px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  transition:all .2s ease;
+}
+.step-label{font-family:var(--ui);font-size:13px;font-weight:500;color:var(--muted);margin-left:8px;transition:color .2s;white-space:nowrap}
+.step-line{width:50px;height:1.5px;background:var(--border2);margin:0 8px;flex-shrink:0;transition:background .3s}
+.step-wrap.active .step-circle{border-color:var(--cyan);background:rgba(0,229,255,0.1);color:var(--cyan);box-shadow:0 0 10px var(--cyanglow)}
+.step-wrap.active .step-label{color:var(--text)}
+.step-wrap.done .step-circle{border-color:var(--green);background:rgba(57,255,138,0.1);color:var(--green)}
+.step-wrap.done .step-label{color:var(--muted2)}
+.step-wrap.done+.step-line,.step-wrap.done .step-line{background:var(--green)}
+
+/* ── エラーバー ──────────────────────────────────────────── */
+#errorbar{
+  display:none;margin:8px 24px;padding:10px 14px;
+  font-family:var(--mono);font-size:12px;color:var(--red);
+  background:rgba(255,78,78,0.07);border:1px solid rgba(255,78,78,0.25);
+  border-radius:var(--r8);align-items:center;gap:10px;
+}
+#errorbar.show{display:flex}
+#errorbar button{background:none;color:var(--red);opacity:.7;margin-left:auto;font-size:14px;padding:2px 6px}
+
+/* ── コンテンツ ──────────────────────────────────────────── */
+#content{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.page{display:none;flex:1;overflow:auto;animation:fadein .25s ease}
+.page.active{display:flex;flex-direction:column;align-items:center}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ── ページ1: アップロード ──────────────────────────────── */
+#page-upload{justify-content:center}
+.upload-wrap{width:100%;max-width:520px;padding:32px 24px;display:flex;flex-direction:column;gap:24px;align-items:center}
+.upload-header{text-align:center}
+.upload-logo{font-size:40px;display:block;margin-bottom:12px}
+.upload-title{font-family:var(--ui);font-size:34px;font-weight:700;letter-spacing:.18em;color:var(--cyan);text-transform:uppercase}
+.upload-sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-top:6px}
+.drop-zone{
+  width:100%;min-height:200px;border:1.5px dashed var(--border2);border-radius:var(--r12);
+  background:var(--bg2);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:border-color .18s,background .18s,box-shadow .18s;position:relative;overflow:hidden;
+}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--cyan2);background:var(--bg3);box-shadow:0 0 0 1px var(--cyanglow),inset 0 0 40px var(--cyanglow)}
+.drop-zone input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.drop-inner{display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none}
+.drop-icon{color:var(--muted);font-size:48px}
+.drop-text{font-family:var(--ui);font-size:18px;font-weight:600;color:var(--muted2)}
+.drop-sub-text{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.enc-badges{display:flex;gap:8px;margin-top:4px}
+.enc-badge{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--bg1);border:1px solid var(--border);border-radius:var(--r4);padding:2px 8px}
+.hint-grid-upload{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
+.hint-item-upload{display:flex;flex-direction:column;gap:3px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px}
+.hint-label-upload{font-family:var(--ui);font-size:14px;font-weight:600;color:var(--cyan)}
+.hint-desc-upload{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* ── ページ2: 列マッピング ───────────────────────────────── */
+#page-columns{align-items:stretch}
+.col-wrap{width:100%;max-width:700px;padding:24px;display:flex;flex-direction:column;gap:16px;margin:0 auto}
+.filebar{display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 18px;gap:16px}
+.filebar-info{display:flex;align-items:center;gap:10px}
+.filebar-rows{font-family:var(--mono);font-size:13px;color:var(--text)}
+.filebar-cols{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--bg1);border:1px solid var(--border);border-radius:var(--r4);padding:2px 8px}
+.auto-rate{display:flex;align-items:center;gap:8px}
+.auto-bar-wrap{width:80px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.auto-bar-fill{height:100%;background:var(--green);border-radius:2px;transition:width .6s}
+.auto-pct{font-family:var(--mono);font-size:12px;color:var(--green)}
+.map-section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r12);overflow:hidden}
+.map-section-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 20px 10px;border-bottom:1px solid var(--border)}
+.map-row{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;gap:16px;border-bottom:1px solid var(--border);transition:background .12s}
+.map-row:last-child{border-bottom:none}
+.map-row:hover{background:var(--bg3)}
+.role-wrap{display:flex;align-items:center;gap:12px;min-width:150px}
+.role-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor}
+.role-name{font-family:var(--ui);font-size:15px;font-weight:600;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+.req-badge{font-family:var(--mono);font-size:10px;color:var(--red);border:1px solid var(--red);border-radius:3px;padding:1px 5px;opacity:.8}
+.role-sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+.select-wrap{display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end}
+.auto-tag{font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(57,255,138,0.08);border:1px solid rgba(57,255,138,0.3);border-radius:var(--r4);padding:2px 6px;white-space:nowrap}
+.col-select{background:var(--bg1);color:var(--text);border:1px solid var(--border2);border-radius:var(--r4);padding:6px 10px;font-size:13px;min-width:200px;cursor:pointer;transition:border-color .14s}
+.col-select:hover,.col-select:focus{border-color:var(--cyan2);outline:none}
+.col-footer{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.col-warn{font-family:var(--mono);font-size:12px;color:var(--red);opacity:.8}
+.btn-confirm{
+  background:var(--cyan);color:var(--bg0);font-family:var(--ui);font-size:16px;
+  font-weight:700;letter-spacing:.08em;padding:12px 36px;border-radius:var(--r8);
+  transition:background .14s,box-shadow .14s,transform .1s;
+}
+.btn-confirm:hover:not(:disabled){background:#00F5FF;box-shadow:0 0 24px rgba(0,229,255,0.4);transform:translateY(-1px)}
+.btn-confirm:disabled{background:var(--border2);color:var(--muted);cursor:not-allowed}
+
+/* ── ページ3: 前処理完了 ─────────────────────────────────── */
+#page-summary{align-items:stretch}
+.sum-wrap{width:100%;max-width:860px;padding:24px;display:flex;flex-direction:column;gap:16px;margin:0 auto}
+.sum-banner{display:flex;align-items:center;gap:14px;background:rgba(57,255,138,.06);border:1px solid rgba(57,255,138,.25);border-radius:var(--r12);padding:16px 20px}
+.sum-banner-icon{width:34px;height:34px;border-radius:50%;background:var(--green);color:var(--bg0);font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sum-banner-title{font-family:var(--ui);font-size:18px;font-weight:700;color:var(--green)}
+.sum-banner-sub{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:2px}
+.sum-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 14px}
+.stat-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.stat-val{font-family:var(--ui);font-size:22px;font-weight:700;line-height:1}
+.stat-unit{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400;margin-left:4px}
+.next-steps{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r12);padding:16px 20px}
+.next-title{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:12px}
+.next-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.next-card{display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r8);padding:12px 14px;transition:border-color .14s,background .14s;position:relative}
+.next-card.clickable{cursor:pointer}
+.next-card.clickable:hover{border-color:var(--cyan2);background:rgba(0,229,255,0.04)}
+.next-card.disabled{opacity:.45;cursor:default}
+.next-icon{font-size:22px;flex-shrink:0}
+.next-card-title{font-family:var(--ui);font-size:14px;font-weight:600;color:var(--text)}
+.next-card-desc{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+.soon-tag{position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:9px;color:var(--muted);background:var(--bg1);border:1px solid var(--border);border-radius:3px;padding:1px 5px}
+
+/* ── ページ4: ラップ検出 ─────────────────────────────────── */
+#page-lapdetect{align-items:stretch;padding:0}
+.lapdetect-wrap{display:grid;grid-template-columns:minmax(0,520px) 1fr;gap:16px;padding:16px;height:100%;max-width:1100px;margin:0 auto;width:100%}
+.canvas-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r12);overflow:hidden;display:flex;flex-direction:column}
+#gps-canvas{display:block;width:100%;height:auto;cursor:crosshair}
+.canvas-hint{font-family:var(--mono);font-size:11px;color:var(--muted);padding:8px 14px;background:var(--bg1);border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.sf-dot-red{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0}
+.lap-panel{display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.panel-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r12);overflow:hidden}
+.panel-card-title{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:11px 16px;border-bottom:1px solid var(--border)}
+.hint-steps{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.hint-step{display:flex;align-items:flex-start;gap:10px;font-family:var(--mono);font-size:12px;color:var(--muted2)}
+.hint-num{width:20px;height:20px;border-radius:50%;background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:var(--cyan);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.btn-detect{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:calc(100% - 32px);margin:14px 16px;
+  background:var(--cyan);color:var(--bg0);font-family:var(--ui);font-size:16px;
+  font-weight:700;letter-spacing:.06em;padding:12px 20px;border-radius:var(--r8);
+  transition:background .14s,box-shadow .14s,transform .1s;
+}
+.btn-detect:hover:not(:disabled){background:#00F5FF;box-shadow:0 0 28px rgba(0,229,255,.4);transform:translateY(-1px)}
+.btn-detect:disabled{background:var(--border2);color:var(--muted);cursor:not-allowed}
+.btn-secondary{font-family:var(--mono);font-size:12px;background:var(--bg3);color:var(--muted2);border:1px solid var(--border2);border-radius:var(--r4);padding:8px 14px;transition:border-color .14s,color .14s;width:100%}
+.btn-secondary:hover{border-color:var(--cyan2);color:var(--cyan)}
+.btn-danger{font-family:var(--mono);font-size:12px;background:none;color:var(--muted);border:1px solid var(--border);border-radius:var(--r4);padding:8px 14px;transition:color .14s;width:100%}
+.btn-danger:hover{color:var(--red);border-color:var(--red)}
+.action-btns{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.status-item{background:var(--bg2);padding:12px 14px}
+.status-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+.status-val{font-family:var(--ui);font-size:18px;font-weight:700}
+.lap-table{width:100%;border-collapse:collapse;font-size:13px}
+.lap-th{padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em;text-align:left;border-bottom:1px solid var(--border)}
+.lap-tr{border-bottom:1px solid rgba(30,40,64,.5);transition:background .1s}
+.lap-tr:hover{background:var(--bg3)}
+.lap-tr.best-row{background:rgba(0,229,255,.04)}
+.lap-td{padding:8px 14px;color:var(--muted2);vertical-align:middle}
+.lap-color-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.best-chip{display:inline-block;margin-left:6px;font-family:var(--mono);font-size:9px;color:var(--cyan);background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);border-radius:3px;padding:1px 5px}
+.ltwrap{max-height:240px;overflow-y:auto}
+
+/* ── ページ5: 解析ダッシュボード ─────────────────────────── */
+#page-dashboard{align-items:stretch;padding:0;flex-direction:row;overflow:hidden}
+.dash-sidebar{
+  width:230px;flex-shrink:0;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.lap-section{padding:10px;border-bottom:1px solid var(--border)}
+.sec-header{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:4px 4px 8px;display:flex;align-items:center;justify-content:space-between}
+.lap-actions{display:flex;gap:4px}
+.lap-act-btn{font-family:var(--mono);font-size:9px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:2px 6px;transition:color .12s}
+.lap-act-btn:hover{color:var(--cyan);border-color:var(--cyan2)}
+.lap-list{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto}
+.lap-item{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:var(--r4);cursor:pointer;transition:background .1s}
+.lap-item:hover{background:var(--bg3)}
+.lap-item-dot{width:8px;height:8px;border-radius:50%;border:1.5px solid;flex-shrink:0;transition:background .14s}
+.lap-item-num{font-family:var(--ui);font-size:12px;font-weight:600;flex:1;transition:color .14s}
+.lap-item-time{font-family:var(--mono);font-size:11px;transition:color .14s;white-space:nowrap}
+.menu-section{flex:1;padding:6px;display:flex;flex-direction:column;gap:2px}
+.menu-group{margin-bottom:6px}
+.menu-group-label{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:5px 6px 3px}
+.menu-btn{
+  width:100%;display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:var(--r4);
+  background:none;font-family:var(--ui);font-size:13px;font-weight:500;color:var(--muted2);
+  transition:background .1s,color .1s;text-align:left;
+}
+.menu-btn:hover{background:var(--bg3);color:var(--text)}
+.menu-btn.active{background:rgba(0,229,255,.08);color:var(--cyan)}
+.menu-icon{font-size:13px;flex-shrink:0;width:16px;text-align:center}
+.menu-lbl{flex:1}
+.ai-tag{font-family:var(--mono);font-size:8px;color:#A44EFF;background:rgba(164,78,255,.1);border:1px solid rgba(164,78,255,.3);border-radius:3px;padding:1px 4px}
+.dl-tag{font-family:var(--mono);font-size:8px;color:var(--amber);background:rgba(255,184,78,.1);border:1px solid rgba(255,184,78,.3);border-radius:3px;padding:1px 4px}
+
+.dash-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.dash-header{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:var(--bg1);border-bottom:1px solid var(--border);flex-shrink:0}
+.dash-title{display:flex;align-items:center;gap:8px;font-family:var(--ui);font-size:16px;font-weight:700;color:var(--text)}
+.dash-meta{display:flex;gap:8px}
+.meta-badge{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r4);padding:3px 8px}
+.dash-content{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+
+/* チャート */
+.chart-img{border-radius:var(--r8);border:1px solid var(--border)}
+
+/* ラップ一覧 */
+.tbl-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.tbl-stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 14px}
+.tbl-stat-lbl{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.tbl-stat-val{font-family:var(--ui);font-size:20px;font-weight:700}
+.data-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);overflow:hidden}
+.data-th{padding:9px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-align:left;border-bottom:1px solid var(--border);background:var(--bg1)}
+.data-tr{border-bottom:1px solid rgba(30,40,64,.5);transition:background .1s}
+.data-tr:hover{background:var(--bg3)}
+.data-tr.best{background:rgba(0,229,255,.04)}
+.data-td{padding:9px 14px;color:var(--muted2)}
+
+/* AIアドバイス */
+.advice-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.advice-stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px}
+.advice-stat-lbl{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+.advice-stat-val{font-family:var(--ui);font-size:15px;font-weight:700;color:var(--text)}
+.advice-list{display:flex;flex-direction:column;gap:10px}
+.advice-card{display:flex;gap:12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:14px 16px}
+.advice-icon{font-size:22px;flex-shrink:0}
+.advice-title{font-family:var(--ui);font-size:15px;font-weight:700;color:var(--cyan);margin-bottom:4px}
+.advice-body{font-family:var(--mono);font-size:12px;color:var(--muted2);line-height:1.6}
+
+/* 次Lap予測 */
+.pred-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;min-height:300px}
+.pred-label{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;text-align:center}
+.pred-time{font-family:var(--ui);font-size:56px;font-weight:700;color:var(--cyan);letter-spacing:.04em}
+.pred-stats{display:flex;gap:20px}
+.pred-stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 20px;text-align:center}
+.pred-stat-lbl{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.pred-stat-val{font-family:var(--ui);font-size:18px;font-weight:700;color:var(--text)}
+
+/* コーナー優先度 */
+.priority-list{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.priority-item{display:grid;grid-template-columns:28px 44px 80px 1fr;gap:10px;align-items:center;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r4);padding:9px 14px}
+.pri-rank{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center}
+.pri-corner{font-family:var(--ui);font-size:14px;font-weight:700;color:var(--text)}
+.pri-loss{font-family:var(--mono);font-size:13px;font-weight:700}
+.pri-reason{font-family:var(--mono);font-size:11px;color:var(--muted2)}
+
+/* タイヤ劣化 */
+.tire-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+.tire-stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 16px}
+.tire-stat-lbl{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.tire-stat-val{font-family:var(--ui);font-size:22px;font-weight:700;color:var(--text)}
+
+/* ローディング・空状態 */
+.loading-box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--muted);font-family:var(--mono);font-size:13px}
+.spinner{width:32px;height:32px;border:2px solid var(--border2);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted)}
+.empty-icon{font-size:48px;opacity:.35}
+.empty-text{font-family:var(--mono);font-size:13px}
+
+/* フッター */
+#footer{padding:10px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);border-top:1px solid var(--border);flex-shrink:0}
+#page-dashboard+#footer{display:none}
+
+/* ユーティリティ */
+.hidden{display:none!important}
+.mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ナビバー -->
+  <div id="navbar">
+    <div class="nav-brand">
+      <span class="nav-logo">🏁</span>
+      <span class="nav-title">RACE ANALYZER</span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-badge">v4.0 Web</span>
+      <button id="btn-reset">← 最初から</button>
+    </div>
+  </div>
+
+  <!-- ステップバー -->
+  <div id="stepbar">
+    <div class="step-wrap" id="sw1">
+      <div class="step-circle" id="sc1">1</div>
+      <span class="step-label">Upload CSV</span>
+    </div>
+    <div class="step-line" id="sl1"></div>
+    <div class="step-wrap" id="sw2">
+      <div class="step-circle" id="sc2">2</div>
+      <span class="step-label">列選択</span>
+    </div>
+    <div class="step-line" id="sl2"></div>
+    <div class="step-wrap" id="sw3">
+      <div class="step-circle" id="sc3">3</div>
+      <span class="step-label">前処理完了</span>
+    </div>
+  </div>
+
+  <!-- エラーバー -->
+  <div id="errorbar">
+    <span id="error-msg"></span>
+    <button onclick="hideError()">✕</button>
+  </div>
+
+  <!-- コンテンツ -->
+  <div id="content">
+
+    <!-- ページ1: アップロード -->
+    <div id="page-upload" class="page active">
+      <div class="upload-wrap">
+        <div class="upload-header">
+          <span class="upload-logo">🏁</span>
+          <div class="upload-title">RACE TELEMETRY</div>
+          <div class="upload-sub">AI-powered lap analysis</div>
+        </div>
+        <label class="drop-zone" id="drop-zone">
+          <input type="file" accept=".csv" id="file-input">
+          <div class="drop-inner">
+            <div class="drop-icon">📂</div>
+            <div class="drop-text">CSVをここにドロップ</div>
+            <div class="drop-sub-text">またはクリックして選択</div>
+            <div class="enc-badges">
+              <span class="enc-badge">shift_jis</span>
+              <span class="enc-badge">utf-8</span>
+              <span class="enc-badge">cp932</span>
+            </div>
+          </div>
+        </label>
+        <div class="hint-grid-upload">
+          <div class="hint-item-upload"><span class="hint-label-upload">Time</span><span class="hint-desc-upload">秒 / 経過時間</span></div>
+          <div class="hint-item-upload"><span class="hint-label-upload">Speed</span><span class="hint-desc-upload">速度 km/h</span></div>
+          <div class="hint-item-upload"><span class="hint-label-upload">Throttle</span><span class="hint-desc-upload">アクセル開度 %</span></div>
+          <div class="hint-item-upload"><span class="hint-label-upload">Brake</span><span class="hint-desc-upload">ブレーキ圧 %</span></div>
+          <div class="hint-item-upload"><span class="hint-label-upload">GPS Lat</span><span class="hint-desc-upload">緯度</span></div>
+          <div class="hint-item-upload"><span class="hint-label-upload">GPS Lon</span><span class="hint-desc-upload">経度</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ページ2: 列マッピング -->
+    <div id="page-columns" class="page">
+      <div class="col-wrap">
+        <div class="filebar">
+          <div class="filebar-info">
+            <span>📄</span>
+            <span class="filebar-rows" id="fb-rows">0 行</span>
+            <span class="filebar-cols" id="fb-cols">0 列</span>
+          </div>
+          <div class="auto-rate">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">自動検出</span>
+            <div class="auto-bar-wrap"><div class="auto-bar-fill" id="auto-bar" style="width:0%"></div></div>
+            <span class="auto-pct" id="auto-pct">0%</span>
+          </div>
+        </div>
+        <div class="map-section">
+          <div class="map-section-label">列マッピング</div>
+          <div id="col-map-rows"></div>
+        </div>
+        <div class="col-footer">
+          <span class="col-warn hidden" id="col-warn">⚠️ Time列は必須です</span>
+          <button class="btn-confirm" id="btn-confirm" onclick="confirmColumns()">解析を開始 →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ページ3: 前処理完了 -->
+    <div id="page-summary" class="page">
+      <div class="sum-wrap">
+        <div class="sum-banner">
+          <div class="sum-banner-icon">✓</div>
+          <div>
+            <div class="sum-banner-title">前処理完了</div>
+            <div class="sum-banner-sub" id="sum-filename">—</div>
+          </div>
+        </div>
+        <div class="sum-stats" id="sum-stats"></div>
+        <div class="next-steps">
+          <div class="next-title">次のステップ</div>
+          <div class="next-grid">
+            <div class="next-card clickable" id="next-lapdetect" onclick="goToLapDetect()">
+              <span class="next-icon">🔍</span>
+              <div><div class="next-card-title">AI ラップ検出</div><div class="next-card-desc">S/FラインをMapで指定</div></div>
+            </div>
+            <div class="next-card disabled">
+              <span class="next-icon">📊</span>
+              <div><div class="next-card-title">速度トレース</div><div class="next-card-desc">ラップ別速度グラフ</div></div>
+              <span class="soon-tag">ラップ検出後</span>
+            </div>
+            <div class="next-card disabled">
+              <span class="next-icon">🗺️</span>
+              <div><div class="next-card-title">GPS ライン比較</div><div class="next-card-desc">ライン可視化</div></div>
+              <span class="soon-tag">ラップ検出後</span>
+            </div>
+            <div class="next-card disabled">
+              <span class="next-icon">📄</span>
+              <div><div class="next-card-title">PDF レポート</div><div class="next-card-desc">解析結果を出力</div></div>
+              <span class="soon-tag">ラップ検出後</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ページ4: ラップ検出 -->
+    <div id="page-lapdetect" class="page">
+      <div class="lapdetect-wrap">
+        <div class="canvas-wrap">
+          <canvas id="gps-canvas" width="520" height="460"></canvas>
+          <div class="canvas-hint" id="canvas-hint">
+            <span>クリックで S/F ラインを指定してください</span>
+          </div>
+        </div>
+        <div class="lap-panel">
+          <div class="panel-card">
+            <div class="panel-card-title">操作</div>
+            <div id="hint-steps" class="hint-steps">
+              <div class="hint-step"><span class="hint-num">1</span><span>マップでスタート/フィニッシュラインをクリック</span></div>
+              <div class="hint-step"><span class="hint-num">2</span><span>「AI ラップ検出を実行」ボタンを押す</span></div>
+              <div class="hint-step"><span class="hint-num">3</span><span>ラップが自動分割・色分け表示される</span></div>
+            </div>
+            <div id="detect-btn-wrap" class="hidden" style="padding:0 16px 14px">
+              <button class="btn-detect" id="btn-detect" onclick="runDetect()">🚀 AI ラップ検出を実行</button>
+            </div>
+            <div id="action-btns" class="action-btns hidden">
+              <button class="btn-detect" onclick="goDashboard()">📊 解析ダッシュボードへ →</button>
+              <button class="btn-secondary" onclick="runDetect(true)">🔄 再検出（S/F 位置変更）</button>
+              <button class="btn-danger" onclick="resetSF()">S/F をリセット</button>
+            </div>
+          </div>
+          <div class="panel-card hidden" id="status-card">
+            <div class="panel-card-title">検出結果</div>
+            <div class="status-grid" id="status-grid"></div>
+          </div>
+          <div class="panel-card hidden" id="lap-table-card">
+            <div class="panel-card-title">ラップタイム <span id="lap-count-badge" style="font-family:var(--mono);font-size:10px;background:var(--bg1);border:1px solid var(--border);border-radius:3px;padding:1px 7px;margin-left:6px"></span></div>
+            <div class="ltwrap">
+              <table class="lap-table" id="lap-table">
+                <thead><tr><th class="lap-th">Lap</th><th class="lap-th">Time</th><th class="lap-th">Δ Best</th></tr></thead>
+                <tbody id="lap-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ページ5: 解析ダッシュボード -->
+    <div id="page-dashboard" class="page">
+      <aside class="dash-sidebar">
+        <div class="lap-section">
+          <div class="sec-header">
+            ラップ選択
+            <div class="lap-actions">
+              <button class="lap-act-btn" onclick="selectAllLaps()">全選択</button>
+              <button class="lap-act-btn" onclick="selectBestOnly()">BEST</button>
+            </div>
+          </div>
+          <div class="lap-list" id="dash-lap-list"></div>
+        </div>
+        <div class="menu-section" id="menu-section"></div>
+      </aside>
+      <div class="dash-main">
+        <div class="dash-header">
+          <div class="dash-title" id="dash-title"><span>📊</span><span>解析ダッシュボード</span></div>
+          <div class="dash-meta">
+            <span class="meta-badge" id="meta-sel">— laps</span>
+            <span class="meta-badge" id="meta-best">Best: —</span>
+          </div>
+        </div>
+        <div class="dash-content" id="dash-content">
+          <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <div class="empty-text">左メニューから解析を選択してください</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="footer">Race Telemetry Analyzer &nbsp;·&nbsp; Vercel + Railway + Supabase</div>
+</div>
+
+<script>
+// ============================================================
+// 設定
+// ============================================================
+// API URL の決定順序:
+// 1. window.RACE_API_URL (HTMLに直接埋め込む場合)
+// 2. meta[name="api-url"] タグ (Vercel の環境変数から生成する場合)
+// 3. 同一オリジン /api (リバースプロキシ経由の場合)
+// 4. localhost:8000 (開発時)
+const API = (() => {
+  if (window.RACE_API_URL) return window.RACE_API_URL.replace(/\/$/, '');
+  const meta = document.querySelector('meta[name="api-url"]');
+  if (meta && meta.content && meta.content !== '__API_URL__') return meta.content.replace(/\/$/, '');
+  return 'http://localhost:8000';
+})();
+
+// ============================================================
+// 状態
+// ============================================================
+const S = {
+  step: 1,
+  sessionId: null,
+  filename: '',
+  uploadData: null,   // POST /api/upload の結果
+  colMap: {},
+  summaryData: null,
+  gpsAvailable: false,
+  // ラップ検出
+  track: [],
+  vb: null,           // viewbox {minLat,maxLat,minLon,maxLon}
+  sfPoint: null,      // {lat,lon}
+  detectResult: null, // POST /api/detect-laps の結果
+  // ダッシュボード
+  dashLaps: [],
+  dashBestLap: 1,
+  dashSelected: new Set(),
+  dashActiveMenu: 'speed_trace',
+};
+
+const LAP_COLORS = [
+  '#FF4E4E','#4E9FFF','#4EFF9F','#FFD24E','#FF4EE0',
+  '#4EFFF0','#FF884E','#A44EFF','#B8FF4E','#FF4E88',
+  '#4EC8FF','#FFEE4E','#FF6B4E','#4EFFB8','#884EFF',
+  '#FF4EC0','#4EFFD4','#FFB84E','#4E7FFF','#D4FF4E',
+];
+const COLOR_BEST = '#00E5FF';
+
+// ============================================================
+// ナビ・ステップ
+// ============================================================
+function setStep(n) {
+  S.step = n;
+  // ページ切り替え
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const pages = {1:'page-upload',2:'page-columns',3:'page-summary',4:'page-lapdetect',5:'page-dashboard'};
+  const pg = document.getElementById(pages[n]);
+  if (pg) pg.classList.add('active');
+
+  // ステップバー
+  const isDash = n === 5;
+  document.getElementById('stepbar').style.display = isDash ? 'none' : 'flex';
+  document.getElementById('footer').style.display  = isDash ? 'none' : 'block';
+  document.getElementById('btn-reset').style.display = n > 1 ? 'block' : 'none';
+
+  if (!isDash) {
+    [1,2,3].forEach(i => {
+      const sw = document.getElementById('sw'+i);
+      const sl = document.getElementById('sl'+i);
+      sw.className = 'step-wrap' + (i < n ? ' done' : i === n ? ' active' : '');
+      if (sl) sl.className = 'step-line' + (i < n ? ' done' : '');
+    });
+  }
+}
+
+function resetAll() {
+  S.sessionId = null; S.filename = ''; S.uploadData = null;
+  S.colMap = {}; S.summaryData = null; S.gpsAvailable = false;
+  S.track = []; S.vb = null; S.sfPoint = null; S.detectResult = null;
+  S.dashLaps = []; S.dashSelected = new Set(); S.dashActiveMenu = 'speed_trace';
+  document.getElementById('file-input').value = '';
+  hideError();
+  setStep(1);
+}
+document.getElementById('btn-reset').onclick = resetAll;
+
+// ============================================================
+// エラー
+// ============================================================
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  document.getElementById('errorbar').classList.add('show');
+}
+function hideError() {
+  document.getElementById('errorbar').classList.remove('show');
+}
+
+// ============================================================
+// ローディング表示
+// ============================================================
+function showLoading(el, msg='解析中...') {
+  el.innerHTML = `<div class="loading-box"><div class="spinner"></div><span>${msg}</span></div>`;
+}
+
+// ============================================================
+// ページ1: アップロード
+// ============================================================
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.csv')) { showError('CSVファイルを選択してください'); return; }
+  S.filename = file.name;
+  hideError();
+  dropZone.querySelector('.drop-inner').innerHTML = '<div class="spinner"></div><div class="drop-text">読み込み中...</div>';
+
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch(`${API}/api/upload`, { method:'POST', body:form });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Upload failed'); }
+    S.uploadData = await res.json();
+    buildColumnMapper();
+    setStep(2);
+  } catch(e) {
+    showError(e.message);
+    dropZone.querySelector('.drop-inner').innerHTML = `
+      <div class="drop-icon">📂</div>
+      <div class="drop-text">CSVをここにドロップ</div>
+      <div class="drop-sub-text">またはクリックして選択</div>
+      <div class="enc-badges"><span class="enc-badge">shift_jis</span><span class="enc-badge">utf-8</span><span class="enc-badge">cp932</span></div>`;
+  }
+}
+
+// ============================================================
+// ページ2: 列マッピング
+// ============================================================
+const ROLES = [
+  {key:'time',     label:'Time',     sub:'経過時間（秒）', req:true,  color:'#00E5FF'},
+  {key:'lap',      label:'Lap',      sub:'ラップ番号',     req:false, color:'#39FF8A'},
+  {key:'speed',    label:'Speed',    sub:'速度 km/h',      req:false, color:'#FFB84E'},
+  {key:'throttle', label:'Throttle', sub:'アクセル開度 %', req:false, color:'#FF884E'},
+  {key:'brake',    label:'Brake',    sub:'ブレーキ圧 %',   req:false, color:'#FF4E4E'},
+  {key:'lat',      label:'GPS Lat',  sub:'緯度',           req:false, color:'#A44EFF'},
+  {key:'lon',      label:'GPS Lon',  sub:'経度',           req:false, color:'#4EFFF0'},
+];
+
+function buildColumnMapper() {
+  const d = S.uploadData;
+  S.colMap = {...d.guess};
+
+  document.getElementById('fb-rows').textContent = d.row_count.toLocaleString() + ' 行';
+  document.getElementById('fb-cols').textContent = d.columns.length + ' 列';
+  const matched = ROLES.filter(r => d.guess[r.key]).length;
+  const rate = Math.round(matched / ROLES.length * 100);
+  document.getElementById('auto-bar').style.width = rate + '%';
+  document.getElementById('auto-pct').textContent = rate + '%';
+
+  const container = document.getElementById('col-map-rows');
+  container.innerHTML = ROLES.map(r => {
+    const cur = d.guess[r.key] || '';
+    const isAuto = cur && cur === d.guess[r.key];
+    const opts = d.columns.map(c => `<option value="${esc(c)}" ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+    return `
+      <div class="map-row">
+        <div class="role-wrap">
+          <div class="role-dot" style="color:${r.color};background:${r.color}"></div>
+          <div>
+            <div class="role-name" style="color:${r.color}">
+              ${r.label}${r.req ? '<span class="req-badge">必須</span>' : ''}
+            </div>
+            <div class="role-sub">${r.sub}</div>
+          </div>
+        </div>
+        <div class="select-wrap">
+          ${isAuto ? '<span class="auto-tag">AUTO</span>' : ''}
+          <select class="col-select" data-role="${r.key}" onchange="onColChange(this)">
+            <option value="">-- 使用しない --</option>
+            ${opts}
+          </select>
+        </div>
+      </div>`;
+  }).join('');
+
+  updateConfirmBtn();
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function onColChange(sel) {
+  const role = sel.dataset.role;
+  S.colMap[role] = sel.value || null;
+  updateConfirmBtn();
+}
+
+function updateConfirmBtn() {
+  const ok = !!S.colMap.time;
+  document.getElementById('btn-confirm').disabled = !ok;
+  document.getElementById('col-warn').classList.toggle('hidden', ok);
+}
+
+async function confirmColumns() {
+  hideError();
+  document.getElementById('btn-confirm').disabled = true;
+  document.getElementById('btn-confirm').textContent = '処理中...';
+  try {
+    const res = await fetch(`${API}/api/column-map`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: S.uploadData.session_id, col_map: S.colMap})
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'ColumnMap failed'); }
+    S.summaryData = await res.json();
+    S.sessionId   = S.uploadData.session_id;
+    S.gpsAvailable = S.summaryData.summary.gps_available;
+    buildSummary();
+    setStep(3);
+  } catch(e) {
+    showError(e.message);
+  } finally {
+    document.getElementById('btn-confirm').disabled = false;
+    document.getElementById('btn-confirm').textContent = '解析を開始 →';
+  }
+}
+
+// ============================================================
+// ページ3: 前処理完了
+// ============================================================
+function buildSummary() {
+  const s = S.summaryData.summary;
+  document.getElementById('sum-filename').textContent = S.filename;
+
+  const fmtDur = sec => {
+    if (!sec) return '—';
+    const m = Math.floor(sec/60), ss = Math.round(sec%60);
+    return m > 0 ? `${m}分 ${ss}秒` : `${ss}秒`;
+  };
+
+  const stats = [
+    {label:'データ行数', val:s.row_count.toLocaleString(), unit:'rows', color:'#00E5FF'},
+    {label:'収録時間',   val:fmtDur(s.duration_sec),       unit:'',     color:'#39FF8A'},
+    {label:'最高速度',   val:s.speed_max ?? '—',           unit:'km/h', color:'#FFB84E'},
+    {label:'平均速度',   val:s.speed_mean ?? '—',          unit:'km/h', color:'#FF884E'},
+    {label:'GPS',       val:s.gps_available ? '✓ 有効' : '✗ なし', unit:'', color:s.gps_available?'#A44EFF':'#5A6A8A'},
+  ];
+  document.getElementById('sum-stats').innerHTML = stats.map(st => `
+    <div class="stat-card">
+      <div class="stat-label">${st.label}</div>
+      <div class="stat-val" style="color:${st.color}">${st.val}<span class="stat-unit">${st.unit}</span></div>
+    </div>`).join('');
+
+  // GPSなしなら検出カードをdisabled
+  if (!S.gpsAvailable) {
+    const card = document.getElementById('next-lapdetect');
+    card.classList.remove('clickable'); card.classList.add('disabled');
+    card.onclick = null;
+    card.querySelector('.next-card-desc').textContent = 'GPS列が必要です';
+    const t = document.createElement('span'); t.className='soon-tag'; t.textContent='GPS必須';
+    card.appendChild(t);
+  }
+}
+
+function goToLapDetect() {
+  if (!S.gpsAvailable) { showError('GPS列が設定されていません'); return; }
+  setStep(4);
+  loadGpsTrack();
+}
+
+// ============================================================
+// ページ4: ラップ検出
+// ============================================================
+async function loadGpsTrack() {
+  const hint = document.getElementById('canvas-hint');
+  hint.innerHTML = '<div class="spinner" style="width:20px;height:20px"></div><span>GPS データ読み込み中...</span>';
+  try {
+    const res = await fetch(`${API}/api/session/${S.sessionId}/track`);
+    if (!res.ok) throw new Error('Track load failed');
+    const data = await res.json();
+    S.track = data.track;
+    const lats = S.track.map(p=>p.lat), lons = S.track.map(p=>p.lon);
+    S.vb = {minLat:Math.min(...lats),maxLat:Math.max(...lats),minLon:Math.min(...lons),maxLon:Math.max(...lons)};
+    drawGps();
+    hint.innerHTML = '<span>クリックで S/F ラインを指定してください</span>';
+  } catch(e) {
+    hint.innerHTML = `<span style="color:var(--red)">エラー: ${e.message}</span>`;
+  }
+}
+
+// GPS Canvas
+const canvas = document.getElementById('gps-canvas');
+const ctx = canvas.getContext('2d');
+
+function toCanvas(lat,lon,vb,W,H,pad=32) {
+  const lr=vb.maxLat-vb.minLat||1e-6, lor=vb.maxLon-vb.minLon||1e-6;
+  const sc=Math.min((W-pad*2)/lor,(H-pad*2)/lr);
+  return [W/2+(lon-(vb.minLon+vb.maxLon)/2)*sc, H/2-(lat-(vb.minLat+vb.maxLat)/2)*sc];
+}
+function fromCanvas(cx,cy,vb,W,H,pad=32) {
+  const lr=vb.maxLat-vb.minLat||1e-6, lor=vb.maxLon-vb.minLon||1e-6;
+  const sc=Math.min((W-pad*2)/lor,(H-pad*2)/lr);
+  return [(vb.minLat+vb.maxLat)/2-(cy-H/2)/sc, (vb.minLon+vb.maxLon)/2+(cx-W/2)/sc];
+}
+function snapToTrack(lat,lon) {
+  let best=S.track[0],bd=Infinity;
+  for(const p of S.track){const d=(p.lat-lat)**2+(p.lon-lon)**2;if(d<bd){bd=d;best=p;}}
+  return best;
+}
+
+function drawGps() {
+  if (!S.vb || !S.track.length) return;
+  const W=canvas.width, H=canvas.height, pad=32;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0F1421'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(30,40,64,0.8)'; ctx.lineWidth=0.5;
+  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  const dr = S.detectResult;
+  if (dr && dr.gps_track && dr.gps_track.length) {
+    // ラップ別カラー
+    let px=0,py=0;
+    dr.gps_track.forEach((p,i)=>{
+      const [cx,cy]=toCanvas(p.lat,p.lon,S.vb,W,H,pad);
+      const c=p.lap>0?LAP_COLORS[(p.lap-1)%LAP_COLORS.length]:'#2A3855';
+      if(i===0){px=cx;py=cy;return;}
+      ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(cx,cy);
+      ctx.strokeStyle=c;ctx.lineWidth=1.8;ctx.globalAlpha=0.85;ctx.stroke();ctx.globalAlpha=1;
+      px=cx;py=cy;
+    });
+  } else {
+    // 速度ヒートマップ
+    const maxSpd=Math.max(...S.track.map(p=>p.spd),1);
+    let px=0,py=0;
+    S.track.forEach((p,i)=>{
+      const [cx,cy]=toCanvas(p.lat,p.lon,S.vb,W,H,pad);
+      if(i===0){px=cx;py=cy;return;}
+      const r=p.spd/maxSpd;
+      ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(cx,cy);
+      ctx.strokeStyle=`rgb(${Math.round(r*220)},${Math.round(Math.sin(r*Math.PI)*180)},${Math.round((1-r)*200)})`;
+      ctx.lineWidth=1.5;ctx.globalAlpha=0.75;ctx.stroke();ctx.globalAlpha=1;
+      px=cx;py=cy;
+    });
+  }
+
+  // S/Fマーカー
+  if (S.sfPoint) {
+    const [sx,sy]=toCanvas(S.sfPoint.lat,S.sfPoint.lon,S.vb,W,H,pad);
+    ctx.beginPath();ctx.arc(sx,sy,14,0,Math.PI*2);ctx.fillStyle='rgba(255,51,51,0.2)';ctx.fill();
+    ctx.strokeStyle='#FF3333';ctx.lineWidth=2;ctx.stroke();
+    ctx.beginPath();ctx.arc(sx,sy,5,0,Math.PI*2);ctx.fillStyle='#FF3333';ctx.fill();
+    ctx.font='bold 11px monospace';ctx.fillStyle='#FF3333';ctx.fillText('S/F',sx+16,sy+4);
+  }
+
+  // 凡例
+  if (dr && dr.laps) {
+    dr.laps.slice(0,10).forEach((l,i)=>{
+      const c=l.lap===dr.best_lap?COLOR_BEST:LAP_COLORS[(l.lap-1)%LAP_COLORS.length];
+      const gy=16+i*18;
+      ctx.fillStyle=c;ctx.fillRect(8,gy,12,10);
+      ctx.font='10px monospace';ctx.fillStyle=c;ctx.fillText(`L${l.lap} ${l.time_fmt}`,24,gy+9);
+    });
+    if (dr.laps.length>10){ctx.font='9px monospace';ctx.fillStyle='#5A6A8A';ctx.fillText(`+${dr.laps.length-10} more`,8,16+10*18);}
+  }
+
+  if (!S.sfPoint && !dr) {
+    ctx.font='12px monospace';ctx.fillStyle='rgba(0,229,255,0.7)';ctx.textAlign='center';
+    ctx.fillText('クリックで S/F ラインを指定',W/2,H-14);ctx.textAlign='left';
+  }
+}
+
+canvas.addEventListener('mousemove', e => {
+  if (!S.vb || S.sfPoint || S.detectResult) return;
+  const r=canvas.getBoundingClientRect();
+  const cx=(e.clientX-r.left)*(canvas.width/r.width);
+  const cy=(e.clientY-r.top)*(canvas.height/r.height);
+  const [lat,lon]=fromCanvas(cx,cy,S.vb,canvas.width,canvas.height);
+  const sn=snapToTrack(lat,lon);
+  const [sx,sy]=toCanvas(sn.lat,sn.lon,S.vb,canvas.width,canvas.height);
+  drawGps();
+  ctx.beginPath();ctx.arc(sx,sy,8,0,Math.PI*2);ctx.fillStyle='rgba(255,51,51,0.35)';ctx.fill();
+  ctx.strokeStyle='#FF3333';ctx.lineWidth=1.5;ctx.stroke();
+});
+
+canvas.addEventListener('click', e => {
+  if (!S.vb || S.detectResult) return;
+  const r=canvas.getBoundingClientRect();
+  const cx=(e.clientX-r.left)*(canvas.width/r.width);
+  const cy=(e.clientY-r.top)*(canvas.height/r.height);
+  const [lat,lon]=fromCanvas(cx,cy,S.vb,canvas.width,canvas.height);
+  const sn=snapToTrack(lat,lon);
+  S.sfPoint={lat:sn.lat,lon:sn.lon};
+  document.getElementById('canvas-hint').innerHTML=`<span class="sf-dot-red"></span><span class="mono" style="font-size:11px">S/F: ${sn.lat.toFixed(6)}, ${sn.lon.toFixed(6)}</span>`;
+  document.getElementById('hint-steps').classList.add('hidden');
+  document.getElementById('detect-btn-wrap').classList.remove('hidden');
+  drawGps();
+});
+
+function resetSF() {
+  S.sfPoint=null; S.detectResult=null;
+  document.getElementById('hint-steps').classList.remove('hidden');
+  document.getElementById('detect-btn-wrap').classList.add('hidden');
+  document.getElementById('action-btns').classList.add('hidden');
+  document.getElementById('status-card').classList.add('hidden');
+  document.getElementById('lap-table-card').classList.add('hidden');
+  document.getElementById('canvas-hint').innerHTML='<span>クリックで S/F ラインを指定してください</span>';
+  drawGps();
+}
+
+async function runDetect(forceRetrain=false) {
+  if (!S.sfPoint) return;
+  const btn=document.getElementById('btn-detect');
+  btn.disabled=true; btn.textContent='🔄 AI 検出中...';
+  hideError();
+  try {
+    const res=await fetch(`${API}/api/detect-laps`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:S.sessionId,sf_lat:S.sfPoint.lat,sf_lon:S.sfPoint.lon,force_retrain:forceRetrain})
+    });
+    if(!res.ok){const e=await res.json();throw new Error(e.detail||'Detection failed');}
+    S.detectResult=await res.json();
+    buildDetectResult();
+    drawGps();
+  } catch(e) {
+    showError(e.message);
+  } finally {
+    btn.disabled=false; btn.textContent='🚀 AI ラップ検出を実行';
+  }
+}
+
+function buildDetectResult() {
+  const dr=S.detectResult;
+  document.getElementById('detect-btn-wrap').classList.add('hidden');
+  document.getElementById('action-btns').classList.remove('hidden');
+  document.getElementById('status-card').classList.remove('hidden');
+  document.getElementById('lap-table-card').classList.remove('hidden');
+
+  const bestLap=dr.laps.find(l=>l.lap===dr.best_lap);
+  const methodLabel=dr.method==='ai_model'?'🤖 AI（保存済み）':dr.method==='ai_trained'?'🤖 AI（今回学習）':'📏 距離ベース';
+  document.getElementById('status-grid').innerHTML=`
+    <div class="status-item"><div class="status-label">ラップ数</div><div class="status-val" style="color:#00E5FF">${dr.lap_count}</div></div>
+    <div class="status-item"><div class="status-label">ベスト</div><div class="status-val" style="color:#00E5FF">${dr.best_time||'—'}</div></div>
+    <div class="status-item"><div class="status-label">検出方法</div><div class="status-val" style="color:#39FF8A;font-size:13px">${methodLabel}</div></div>
+    ${dr.ai_score!=null?`<div class="status-item"><div class="status-label">AI精度(F1)</div><div class="status-val" style="color:#FFB84E">${(dr.ai_score*100).toFixed(1)}%</div></div>`:''}
+  `;
+
+  document.getElementById('lap-count-badge').textContent=dr.laps.length+' laps';
+  const tbody=document.getElementById('lap-tbody');
+  tbody.innerHTML=dr.laps.map(l=>{
+    const isBest=l.lap===dr.best_lap;
+    const delta=bestLap?l.time_sec-bestLap.time_sec:0;
+    const color=isBest?COLOR_BEST:LAP_COLORS[(l.lap-1)%LAP_COLORS.length];
+    return `<tr class="lap-tr${isBest?' best-row':''}">
+      <td class="lap-td"><span class="lap-color-dot" style="background:${color}"></span><span style="color:${color}">Lap ${l.lap}</span>${isBest?'<span class="best-chip">BEST</span>':''}</td>
+      <td class="lap-td mono" style="color:${color}">${l.time_fmt}</td>
+      <td class="lap-td mono" style="color:${isBest?'#5A6A8A':delta>0?'#FF6B6B':'#39FF8A'}">${isBest?'—':'+'+delta.toFixed(3)+'s'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
+// ページ5: 解析ダッシュボード
+// ============================================================
+const MENU_ITEMS = [
+  {id:'speed_trace',        label:'速度トレース',         icon:'📈', type:'chart',  group:'基本解析'},
+  {id:'delta_time',         label:'デルタタイム',          icon:'⏱',  type:'chart',  group:'基本解析'},
+  {id:'gg_diagram',         label:'G-G ダイアグラム',     icon:'🔵', type:'chart',  group:'基本解析'},
+  {id:'brake_map',          label:'ブレーキマップ',        icon:'🛑', type:'chart',  group:'基本解析'},
+  {id:'corner_speed',       label:'コーナー速度解析',      icon:'↩️', type:'chart',  group:'基本解析'},
+  {id:'sector_comparison',  label:'セクター比較',          icon:'📊', type:'chart',  group:'基本解析'},
+  {id:'lap_consistency',    label:'ラップ安定性',          icon:'📉', type:'chart',  group:'基本解析'},
+  {id:'racing_line',        label:'GPS ライン比較',        icon:'🗺️', type:'chart',  group:'基本解析'},
+  {id:'theoretical_best',   label:'理論ベスト Lap',        icon:'🏅', type:'chart',  group:'基本解析'},
+  {id:'brake_distance',     label:'制動点距離解析',        icon:'📏', type:'chart',  group:'詳細解析'},
+  {id:'throttle_on',        label:'スロットル ON 解析',    icon:'🚀', type:'chart',  group:'詳細解析'},
+  {id:'os_us',              label:'OS/US 自動判定',        icon:'🔄', type:'chart',  group:'詳細解析'},
+  {id:'lap_list',           label:'ラップタイム一覧',      icon:'📋', type:'table',  group:'データ'},
+  {id:'next_lap_prediction',label:'次 Lap タイム予測',     icon:'🔮', type:'ai',     group:'AI 解析'},
+  {id:'tire_degradation',   label:'タイヤ劣化予測',        icon:'🔬', type:'ai',     group:'AI 解析'},
+  {id:'corner_priority',    label:'コーナー優先度 AI',     icon:'🏁', type:'ai',     group:'AI 解析'},
+  {id:'ai_advice',          label:'AI アドバイス',         icon:'🤖', type:'ai',     group:'AI 解析'},
+  {id:'pdf',                label:'PDF レポート生成',       icon:'📄', type:'pdf',    group:'出力'},
+];
+const GROUPS=['基本解析','詳細解析','データ','AI 解析','出力'];
+
+async function goDashboard() {
+  setStep(5);
+  buildDashSidebar();
+  await runMenu('speed_trace');
+}
+
+function buildDashSidebar() {
+  // ラップリスト
+  const laps=S.detectResult.laps;
+  S.dashLaps=laps;
+  S.dashBestLap=S.detectResult.best_lap;
+  S.dashSelected=new Set(laps.map(l=>l.lap));
+
+  renderDashLaps();
+  renderMenu();
+  updateDashMeta();
+}
+
+function renderDashLaps() {
+  const laps=S.dashLaps;
+  document.getElementById('dash-lap-list').innerHTML=laps.map((l,i)=>{
+    const color=l.lap===S.dashBestLap?COLOR_BEST:LAP_COLORS[i%LAP_COLORS.length];
+    const isSel=S.dashSelected.has(l.lap);
+    return `<div class="lap-item" onclick="toggleDashLap(${l.lap})" id="dlap-${l.lap}">
+      <span class="lap-item-dot" style="border-color:${color};background:${isSel?color:'transparent'}"></span>
+      <span class="lap-item-num" style="color:${isSel?color:'#5A6A8A'}">Lap ${l.lap}${l.lap===S.dashBestLap?'★':''}</span>
+      <span class="lap-item-time" style="color:${isSel?color:'#3A4A6A'}">${l.time_fmt}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleDashLap(lap) {
+  if (S.dashSelected.has(lap)) {
+    if (S.dashSelected.size>1) S.dashSelected.delete(lap);
+  } else {
+    S.dashSelected.add(lap);
+  }
+  renderDashLaps();
+  updateDashMeta();
+}
+function selectAllLaps() { S.dashSelected=new Set(S.dashLaps.map(l=>l.lap)); renderDashLaps(); updateDashMeta(); }
+function selectBestOnly() { S.dashSelected=new Set([S.dashBestLap]); renderDashLaps(); updateDashMeta(); }
+
+function updateDashMeta() {
+  document.getElementById('meta-sel').textContent=S.dashSelected.size+' laps selected';
+  document.getElementById('meta-best').textContent='Best: Lap '+S.dashBestLap;
+}
+
+function renderMenu() {
+  const sec=document.getElementById('menu-section');
+  sec.innerHTML=GROUPS.map(g=>{
+    const items=MENU_ITEMS.filter(m=>m.group===g);
+    return `<div class="menu-group">
+      <div class="menu-group-label">${g}</div>
+      ${items.map(m=>`
+        <button class="menu-btn ${m.id===S.dashActiveMenu?'active':''}" id="mbtn-${m.id}" onclick="runMenu('${m.id}')">
+          <span class="menu-icon">${m.icon}</span>
+          <span class="menu-lbl">${m.label}</span>
+          ${m.type==='ai'?'<span class="ai-tag">AI</span>':''}
+          ${m.type==='pdf'?'<span class="dl-tag">DL</span>':''}
+        </button>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+async function runMenu(id) {
+  const item=MENU_ITEMS.find(m=>m.id===id);
+  if (!item) return;
+  S.dashActiveMenu=id;
+
+  // メニューアクティブ更新
+  document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('active'));
+  const btn=document.getElementById('mbtn-'+id);
+  if (btn) btn.classList.add('active');
+
+  // タイトル更新
+  document.getElementById('dash-title').innerHTML=`<span>${item.icon}</span><span>${item.label}</span>`;
+
+  const content=document.getElementById('dash-content');
+  const selArr=Array.from(S.dashSelected);
+  const bestLap=S.dashBestLap;
+
+  if (item.type==='pdf') {
+    showLoading(content,'PDF生成中...');
+    try {
+      const res=await fetch(`${API}/api/analysis/pdf`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:S.sessionId,selected_laps:selArr,best_lap:bestLap})
+      });
+      if (!res.ok) throw new Error((await res.json()).detail||'PDF failed');
+      const blob=await res.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='race_report.pdf'; a.click();
+      URL.revokeObjectURL(url);
+      content.innerHTML='<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-text">PDFをダウンロードしました</div></div>';
+    } catch(e) { content.innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--red)">${e.message}</div></div>`; }
+    return;
+  }
+
+  showLoading(content);
+
+  try {
+    if (item.type==='chart') {
+      const res=await fetch(`${API}/api/analysis/chart`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:S.sessionId,chart_id:id,selected_laps:selArr,best_lap:bestLap})
+      });
+      if (!res.ok) throw new Error((await res.json()).detail||'Chart failed');
+      const data=await res.json();
+      content.innerHTML=`<img src="${data.image}" class="chart-img" alt="${item.label}">`;
+    } else if (item.type==='table' || item.type==='ai') {
+      const res=await fetch(`${API}/api/analysis/ai`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:S.sessionId,ai_id:id,best_lap:bestLap})
+      });
+      if (!res.ok) throw new Error((await res.json()).detail||'AI failed');
+      const data=await res.json();
+      renderAIResult(id,data,content);
+    }
+  } catch(e) {
+    content.innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text" style="color:var(--red)">${e.message}</div></div>`;
+  }
+}
+
+function renderAIResult(id, data, el) {
+  if (id==='lap_list') {
+    const d=data;
+    el.innerHTML=`
+      <div class="tbl-stats">
+        <div class="tbl-stat"><div class="tbl-stat-lbl">Best Time</div><div class="tbl-stat-val" style="color:#00E5FF">${d.best_time}</div></div>
+        <div class="tbl-stat"><div class="tbl-stat-lbl">Theoretical Best</div><div class="tbl-stat-val" style="color:#FFD24E">${d.theoretical_best}</div></div>
+        <div class="tbl-stat"><div class="tbl-stat-lbl">Potential Gain</div><div class="tbl-stat-val" style="color:#FF884E">${(d.gain||0).toFixed(3)}s</div></div>
+        <div class="tbl-stat"><div class="tbl-stat-lbl">Lap STD</div><div class="tbl-stat-val" style="color:#8B9EC0">${(d.std||0).toFixed(3)}s</div></div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th class="data-th">Lap</th><th class="data-th">Time</th><th class="data-th">Δ Best</th></tr></thead>
+        <tbody>${(d.rows||[]).map(r=>`
+          <tr class="data-tr${r.is_best?' best':''}">
+            <td class="data-td" style="color:${r.is_best?'#00E5FF':'#8B9EC0'}">Lap ${r.lap}${r.is_best?'<span class="best-chip">★BEST</span>':''}</td>
+            <td class="data-td mono" style="color:${r.is_best?'#00E5FF':'#8B9EC0'}">${r.time_fmt}</td>
+            <td class="data-td mono" style="color:${r.is_best?'#5A6A8A':r.delta>0?'#FF6B6B':'#39FF8A'}">${r.is_best?'—':'+'+r.delta.toFixed(3)+'s'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } else if (id==='ai_advice') {
+    const summary=data.summary||{};
+    const advices=data.advices||[];
+    el.innerHTML=`
+      <div class="advice-summary">
+        ${Object.entries(summary).slice(0,8).map(([k,v])=>`
+          <div class="advice-stat"><div class="advice-stat-lbl">${k.replace(/_/g,' ')}</div><div class="advice-stat-val">${v}</div></div>`).join('')}
+      </div>
+      <div class="advice-list">
+        ${advices.map(a=>`
+          <div class="advice-card">
+            <div class="advice-icon">${a.icon}</div>
+            <div><div class="advice-title">${a.title}</div><div class="advice-body">${a.body}</div></div>
+          </div>`).join('')}
+      </div>`;
+  } else if (id==='next_lap_prediction') {
+    if (data.error) {
+      el.innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${data.error}</div></div>`;
+    } else {
+      el.innerHTML=`
+        <div class="pred-box">
+          <div><div class="pred-label">次ラップ予測タイム</div><div class="pred-time">${data.predicted_fmt||'—'}</div></div>
+          <div class="pred-stats">
+            <div class="pred-stat"><div class="pred-stat-lbl">予測誤差 (MAE)</div><div class="pred-stat-val">±${(data.mae||0).toFixed(3)}s</div></div>
+            <div class="pred-stat"><div class="pred-stat-lbl">信頼度</div><div class="pred-stat-val">${((data.confidence||0)*100).toFixed(1)}%</div></div>
+            <div class="pred-stat"><div class="pred-stat-lbl">トレンド</div><div class="pred-stat-val" style="color:${data.trend==='improving'?'#39FF8A':'#FF6B6B'}">${data.trend==='improving'?'↑ 改善中':'↓ 悪化傾向'}</div></div>
+          </div>
+        </div>`;
+    }
+  } else if (id==='corner_priority') {
+    const priority=data.priority||[];
+    el.innerHTML=`
+      ${data.image?`<img src="${data.image}" class="chart-img" alt="corner priority">`:''}
+      <div class="priority-list">
+        ${priority.slice(0,8).map((p,i)=>`
+          <div class="priority-item">
+            <span class="pri-rank">${i+1}</span>
+            <span class="pri-corner">C${p.corner}</span>
+            <span class="pri-loss" style="color:${p.speed_loss>5?'#FF4E4E':p.speed_loss>2?'#FFB84E':'#39FF8A'}">-${p.speed_loss.toFixed(1)}km/h</span>
+            <span class="pri-reason">${p.reason}</span>
+          </div>`).join('')}
+      </div>`;
+  } else if (id==='tire_degradation') {
+    el.innerHTML=`
+      ${data.image?`<img src="${data.image}" class="chart-img" alt="tire degradation">`:''}
+      ${!data.error?`
+      <div class="tire-stats">
+        <div class="tire-stat"><div class="tire-stat-lbl">ベースタイム</div><div class="tire-stat-val">${(data.base_time||0).toFixed(3)}s</div></div>
+        <div class="tire-stat"><div class="tire-stat-lbl">劣化率</div><div class="tire-stat-val">${(data.deg_per_lap||0)>0?'+':''}${(data.deg_per_lap||0).toFixed(4)}s/lap</div></div>
+        <div class="tire-stat"><div class="tire-stat-lbl">最適スティント長</div><div class="tire-stat-val" style="color:#39FF8A">${data.optimal_stint||'—'} laps</div></div>
+      </div>`:''}`;
+  } else {
+    el.innerHTML='<div class="empty-state"><div class="empty-text">データなし</div></div>';
+  }
+}
+
+// ============================================================
+// 初期化
+// ============================================================
+setStep(1);
+</script>
+</body>
+</html>
